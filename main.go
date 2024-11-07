@@ -86,6 +86,7 @@ func run(c *cli.Context) error {
 	includePatterns := c.String("include")
 	excludePatterns := c.String("exclude")
 	var urls string
+	var dstS3Path string
 	var argsList, includeArgsList, excludeArgsList []string
 
 	if strings.ContainsAny(source, "*") {
@@ -116,38 +117,31 @@ func run(c *cli.Context) error {
 	}
 
 	if fileType.IsDir() {
-
 		if target != "" {
-			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/" + target + "/" + newFolder, "--region", awsDefaultRegion, "--recursive"}
-
-			if len(includeArgsList) > 0 {
-				argsList = append(argsList, "--exclude", "*")
-				argsList = append(argsList, includeArgsList...)
-			}
-
-			urls = "https://s3.console.aws.amazon.com/s3/buckets/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + target + "/" + newFolder + "/&showversions=false"
+			dstS3Path = "s3://" + awsBucket + "/" + target + "/" + newFolder
+			urls = S3DirPathUrl + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + target + "/" + newFolder + "/&showversions=false"
 		} else {
-			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/" + newFolder, "--region", awsDefaultRegion, "--recursive"}
-
-			if len(includeArgsList) > 0 {
-				argsList = append(argsList, "--exclude", "*")
-				argsList = append(argsList, includeArgsList...)
-			}
-
-			urls = "https://s3.console.aws.amazon.com/s3/buckets/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + newFolder + "/&showversions=false"
+			dstS3Path = "s3://" + awsBucket + "/" + newFolder
+			urls = S3DirPathUrl + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + newFolder + "/&showversions=false"
 		}
-
+		argsList = []string{"aws", "s3", "cp", source, dstS3Path, "--region", awsDefaultRegion, "--recursive"}
 	} else {
 		if target != "" {
-			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/" + target + "/", "--region", awsDefaultRegion}
-			urls = "https://s3.console.aws.amazon.com/s3/object/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + target + "/" + newFolder
+			dstS3Path = "s3://" + awsBucket + "/" + target + "/" + newFolder
+			urls = S3ObjPathUrl + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + target + "/" + newFolder
 		} else {
-			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/", "--region", awsDefaultRegion}
-			urls = "https://s3.console.aws.amazon.com/s3/object/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + newFolder
+			dstS3Path = "s3://" + awsBucket + "/"
+			urls = S3ObjPathUrl + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + newFolder
 		}
+		argsList = []string{"s3", "cp", source, dstS3Path, "--region", awsDefaultRegion}
 	}
 
-	fmt.Println("aws ", argsList)
+	if len(includeArgsList) > 0 {
+		argsList = append(argsList, ExcludeAllTypes...)
+		argsList = append(argsList, includeArgsList...)
+	}
+
+	//fmt.Println("aws ", argsList)
 	Uploadcmd = exec.Command("aws", argsList...)
 
 	out, err := Uploadcmd.Output()
@@ -164,3 +158,8 @@ func run(c *cli.Context) error {
 
 	return writeArtifactFile(files, artifactFilePath)
 }
+
+var ExcludeAllTypes = []string{"--exclude", "*"}
+
+const S3DirPathUrl = "https://s3.console.aws.amazon.com/s3/buckets/"
+const S3ObjPathUrl = "https://s3.console.aws.amazon.com/s3/object/"
