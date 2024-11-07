@@ -57,6 +57,16 @@ func main() {
 			Usage:  "Artifact file",
 			EnvVar: "PLUGIN_ARTIFACT_FILE",
 		},
+		cli.StringFlag{
+			Name:   "include",
+			Usage:  "Include file patterns (comma-separated)",
+			EnvVar: "PLUGIN_INCLUDE",
+		},
+		cli.StringFlag{
+			Name:   "exclude",
+			Usage:  "Exclude file patterns (comma-separated)",
+			EnvVar: "PLUGIN_EXCLUDE",
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -73,7 +83,10 @@ func run(c *cli.Context) error {
 	target := c.String("target-path")
 	newFolder := filepath.Base(source)
 	artifactFilePath := c.String("artifact-file")
+	includePatterns := c.String("include")
+	excludePatterns := c.String("exclude")
 	var urls string
+	var argsList, includeArgsList, excludeArgsList []string
 
 	if strings.ContainsAny(source, "*") {
 		log.Fatal("Glob pattern not allowed!")
@@ -89,26 +102,58 @@ func run(c *cli.Context) error {
 	exec.Command("aws", "configure", "set", "aws_secret_access_key", awsSecretKey).Run()
 
 	var Uploadcmd *exec.Cmd
+
+	if excludePatterns != "" {
+		for _, pattern := range strings.Split(excludePatterns, ",") {
+			excludeArgsList = append(excludeArgsList, "--exclude", strings.TrimSpace(pattern))
+		}
+	}
+
+	if includePatterns != "" {
+		for _, pattern := range strings.Split(includePatterns, ",") {
+			includeArgsList = append(includeArgsList, "--include", strings.TrimSpace(pattern))
+		}
+	}
+
 	if fileType.IsDir() {
+
 		if target != "" {
-			Uploadcmd = exec.Command("aws", "s3", "cp", source, "s3://"+awsBucket+"/"+target+"/"+newFolder, "--region", awsDefaultRegion, "--recursive")
+			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/" + target + "/" + newFolder, "--region", awsDefaultRegion, "--recursive"}
+
+			if len(includeArgsList) > 0 {
+				argsList = append(argsList, "--exclude", "*")
+				argsList = append(argsList, includeArgsList...)
+			}
+
 			urls = "https://s3.console.aws.amazon.com/s3/buckets/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + target + "/" + newFolder + "/&showversions=false"
 		} else {
-			Uploadcmd = exec.Command("aws", "s3", "cp", source, "s3://"+awsBucket+"/"+newFolder+"/", "--region", awsDefaultRegion, "--recursive")
+			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/" + newFolder, "--region", awsDefaultRegion, "--recursive"}
+
+			if len(includeArgsList) > 0 {
+				argsList = append(argsList, "--exclude", "*")
+				argsList = append(argsList, includeArgsList...)
+			}
+
 			urls = "https://s3.console.aws.amazon.com/s3/buckets/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + newFolder + "/&showversions=false"
 		}
+
 	} else {
 		if target != "" {
-			Uploadcmd = exec.Command("aws", "s3", "cp", source, "s3://"+awsBucket+"/"+target+"/", "--region", awsDefaultRegion)
+			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/" + target + "/", "--region", awsDefaultRegion}
 			urls = "https://s3.console.aws.amazon.com/s3/object/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + target + "/" + newFolder
 		} else {
-			Uploadcmd = exec.Command("aws", "s3", "cp", source, "s3://"+awsBucket+"/", "--region", awsDefaultRegion)
+			argsList = []string{"s3", "cp", source, "s3://" + awsBucket + "/", "--region", awsDefaultRegion}
 			urls = "https://s3.console.aws.amazon.com/s3/object/" + awsBucket + "?region=" + awsDefaultRegion + "&prefix=" + newFolder
 		}
 	}
 
+	fmt.Println("aws ", argsList)
+	Uploadcmd = exec.Command("aws", argsList...)
+
 	out, err := Uploadcmd.Output()
 	if err != nil {
+		fmt.Println(string(out))
+		fmt.Println("Error uploading to S3 bucket", err.Error())
 		return err
 	}
 	fmt.Printf("Output: %s\n", out)
